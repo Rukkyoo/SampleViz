@@ -2,7 +2,6 @@
 
 import { useEffect, useId, useState } from "react";
 import Particles from "@tsparticles/react";
-import { loadSlim } from "@tsparticles/slim";
 import type { IOptions, RecursivePartial, MoveDirection } from "@tsparticles/engine"; // Import MoveDirection
 
 interface SparkleParticlesProps {
@@ -52,7 +51,6 @@ export function SparkleParticles({
   particleShape = "circle",
   enableCollisions = false,
 }: SparkleParticlesProps) {
-  const [isEngineReady, setIsEngineReady] = useState(false);
   const [activeColor, setActiveColor] = useState("#000000");
   const instanceId = useId();
 
@@ -77,11 +75,6 @@ export function SparkleParticles({
 
     return () => observer.disconnect();
   }, [particleColor]);
-
-  const particlesInit = async (engine: any) => {
-    await loadSlim(engine as any);
-    setIsEngineReady(true);
-  };
 
   const mergedOptions: RecursivePartial<IOptions> = {
     background: {
@@ -171,13 +164,10 @@ export function SparkleParticles({
   };
 
   return (
-    isEngineReady && (
-      <Particles
-        id={instanceId}
-        init={particlesInit}
-        options={mergedOptions}
-        className={className}
-      />
-    )
+    <Particles
+      id={instanceId}
+      options={mergedOptions}
+      className={className}
+    />
   );
 }
