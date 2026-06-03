@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
-import Particles, { initParticlesEngine } from "@tsparticles/react";
+import Particles from "@tsparticles/react";
 import { loadSlim } from "@tsparticles/slim";
 import type { IOptions, RecursivePartial, MoveDirection } from "@tsparticles/engine"; // Import MoveDirection
 
@@ -66,12 +66,6 @@ export function SparkleParticles({
 
     setActiveColor(resolveThemeColor());
 
-    initParticlesEngine(async (engine) => {
-      await loadSlim(engine as any);
-    }).then(() => {
-      setIsEngineReady(true);
-    });
-
     const observer = new MutationObserver(() => {
       setActiveColor(resolveThemeColor());
     });
@@ -83,6 +77,11 @@ export function SparkleParticles({
 
     return () => observer.disconnect();
   }, [particleColor]);
+
+  const particlesInit = async (engine: any) => {
+    await loadSlim(engine as any);
+    setIsEngineReady(true);
+  };
 
   const mergedOptions: RecursivePartial<IOptions> = {
     background: {
@@ -175,6 +174,7 @@ export function SparkleParticles({
     isEngineReady && (
       <Particles
         id={instanceId}
+        init={particlesInit}
         options={mergedOptions}
         className={className}
       />

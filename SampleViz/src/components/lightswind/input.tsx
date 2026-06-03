@@ -1,10 +1,9 @@
 import * as React from "react";
 import { cn } from "../../lib/utils";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, type MotionProps } from "framer-motion";
 import { BorderBeam } from "./border-beam";
 
-// Use React.InputHTMLAttributes directly for the base input props
-export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> { }
+export type InputProps = Omit<React.InputHTMLAttributes<HTMLInputElement>, "onDrag"> & MotionProps;
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className, type, ...props }, ref) => {

@@ -279,7 +279,7 @@ export default function CreatePage() {
                     </Card>
                   ))}
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between flex-col gap-4 sm:flex-row">
                   <Button type="button" variant="secondary" size="lg" className="w-80 rounded-full cursor-pointer justify-center bg-cyan-500 text-slate-950 hover:bg-cyan-800 transition duration-300" onClick={addSong}>
                     + Add Another Song
                   </Button>
