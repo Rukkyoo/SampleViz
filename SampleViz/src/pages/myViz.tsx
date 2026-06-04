@@ -82,7 +82,7 @@ export default function MyVizPage() {
         if (selectedPayload && selectedPayload.original.id === idToDelete) {
             setSelectedIndex(null);
         } else if (selectedIndex !== null) {
-            const newIndex = updated.findIndex((p) => p.original.id === selectedPayload.original.id);
+            const newIndex = updated.findIndex((p) => p.original.id === selectedPayload?.original.id);
             setSelectedIndex(newIndex !== -1 ? newIndex : null);
         }
     };
@@ -130,7 +130,7 @@ export default function MyVizPage() {
                                     glowColor={selectedIndex === index ? "#38bdf8" : "#8b5cf6"}
                                     className={`cursor-pointer rounded-3xl border border-slate-700/80 bg-slate-950/90 p-6 ${selectedIndex === index ? "scale-[1.01] border-cyan-400/80 bg-slate-900/95" : " hover:border-slate-500/80"
                                         }`}
-                                    onClick={() => setSelectedIndex(index)}
+                                    
                                 >
                                     <div className="space-y-5">
                                         <div className="flex items-start justify-between">
@@ -153,6 +153,9 @@ export default function MyVizPage() {
                                         <div className="space-y-2">
                                             <p className="text-sm uppercase tracking-[0.28em] text-cyan-300/70">Original Song</p>
                                             <p className="text-lg font-medium text-slate-200">{payload.original.songTitle}</p>
+                                            <p className="text-cyan-300/70 hover:text-cyan-400 cursor-pointer underline" onClick={() => setSelectedIndex(index)}>
+                                                View Connections
+                                            </p>
                                         </div>
 
                                         <div className="rounded-2xl border border-slate-700/80 bg-slate-950/70 p-4">
