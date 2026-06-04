@@ -7,3 +7,8 @@ export interface SongEntry {
 }
 
 export type RelationshipType = "sample" | "interpolation" | "parody";
+
+export interface SavedVizPayload {
+  original: Omit<SongEntry, "relationshipType">;
+  connectedSongs: SongEntry[];
+}

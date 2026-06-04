@@ -13,7 +13,7 @@ export function Navbar() {
                 <NavLink to="/" className="flex items-center gap-3 text-slate-100">
                     <div>
                         <p className="text-2xl font-semibold">SAMPLE<span className="text-green-500">VIZ</span></p>
-                        <p className="text-xs text-slate-400">Music Sample relationship Visualizer</p>
+                        <p className="text-xs text-slate-400">Music Sample Relationship Visualizer</p>
                     </div>
                 </NavLink>
 

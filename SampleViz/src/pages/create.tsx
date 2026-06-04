@@ -1,4 +1,4 @@
-﻿import { useState, useMemo } from "react";
+import { useState } from "react";
 import { Button } from "../components/lightswind/button";
 import {
   Card,
@@ -9,8 +9,7 @@ import {
 } from "../components/lightswind/card";
 import { Tooltip, TooltipTrigger } from '../components/lightswind/tooltip';
 import { Input } from "../components/lightswind/input";
-import type { SongEntry } from "../types/song.ts"
-import type { RelationshipType } from "../types/song.ts"
+import type { SongEntry, RelationshipType, SavedVizPayload } from "../types/song";
 
 
 const createSongEntry = (): SongEntry => ({
@@ -27,15 +26,13 @@ export default function CreatePage() {
   const [originalTitle, setOriginalTitle] = useState("");
   const [connectedSongs, setConnectedSongs] = useState<SongEntry[]>([createSongEntry()]);
 
-  const totalCounts = useMemo(() => {
-    return connectedSongs.reduce(
-      (counts, song) => {
-        counts[song.relationshipType] += 1;
-        return counts;
-      },
-      { sample: 0, interpolation: 0, parody: 0 } as Record<RelationshipType, number>,
-    );
-  }, [connectedSongs]);
+  const totalCounts = connectedSongs.reduce(
+    (counts, song) => {
+      counts[song.relationshipType] += 1;
+      return counts;
+    },
+    { sample: 0, interpolation: 0, parody: 0 } as Record<RelationshipType, number>,
+  );
 
   const handleSongChange = (id: string, field: keyof SongEntry, value: string) => {
     setConnectedSongs((current) =>
@@ -59,8 +56,9 @@ export default function CreatePage() {
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const payload = {
+    const payload: SavedVizPayload = {
       original: {
+        id: crypto.randomUUID(),
         spotifyUrl: originalUrl,
         artistName: originalArtist,
         songTitle: originalTitle,
@@ -68,7 +66,24 @@ export default function CreatePage() {
       connectedSongs,
     };
     console.log("Visualize payload", payload);
-    localStorage.setItem("musicPayload", JSON.stringify(payload));
+    
+    let list: SavedVizPayload[] = [];
+    const stored = localStorage.getItem("musicPayload");
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          list = parsed;
+        } else if (parsed && typeof parsed === "object") {
+          list = [parsed];
+        }
+      } catch {
+        // ignore
+      }
+    }
+    list.push(payload);
+    localStorage.setItem("musicPayload", JSON.stringify(list));
+    
     setOriginalUrl("");
     setOriginalArtist("");
     setOriginalTitle("");
@@ -83,7 +98,7 @@ export default function CreatePage() {
             <div className="max-w-3xl space-y-4">
               <p className="text-sm uppercase tracking-[0.3em] text-cyan-300/80">Create Your Sample Visualizer here</p>
               <h1 className="text-4xl font-semibold tracking-tight text-slate-50 sm:text-5xl space-grotesk">
-                Start with the original song, then add the songs that either <a className="underline text-blue-200 cursor-pointer" href="https://en.wikipedia.org/wiki/Sampling_(music)">sampled,</a> <a className="underline text-blue-200 cursor-pointer" href="https://en.wikipedia.org/wiki/Interpolation_(popular_music)">interpolated,</a> or <a className="underline text-blue-200 cursor-pointer" href="https://en.wikipedia.org/wiki/Parody_music">parodied</a> it.
+                Start with the original song, then add the songs that either <a className="underline text-blue-200 cursor-pointer" href="https://en.wikipedia.org/wiki/Sampling_(music)" target="_blank" rel="noopener noreferrer">sampled,</a> <a className="underline text-blue-200 cursor-pointer" href="https://en.wikipedia.org/wiki/Interpolation_(popular_music)" target="_blank" rel="noopener noreferrer">interpolated,</a> or <a className="underline text-blue-200 cursor-pointer" href="https://en.wikipedia.org/wiki/Parody_music" target="_blank" rel="noopener noreferrer">parodied</a> it.
               </h1>
             </div>
 
