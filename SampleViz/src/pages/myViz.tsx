@@ -49,6 +49,7 @@ export default function MyVizPage() {
 
     useEffect(() => {
         const stored = localStorage.getItem("musicPayload");
+        console.log("Loaded from localStorage:", stored);
         if (!stored) return;
         try {
             const parsed = JSON.parse(stored);
@@ -71,6 +72,41 @@ export default function MyVizPage() {
             setSavedPayloads([]);
         }
     }, []);
+
+    function mapPayloadToFlow(payload: SavedVizPayload) {
+        const centerX = 400;
+        const centerY = 180;
+        const radius = 120;
+        const originalId = payload.original.id || `orig-${Math.random().toString(36).slice(2, 9)}`;
+
+        const nodes: Node[] = [
+            {
+                id: originalId,
+                data: { label: `${payload.original.artistName} — ${payload.original.songTitle}` },
+                position: { x: centerX, y: centerY },
+            },
+        ];
+
+        const len = Math.max(1, payload.connectedSongs.length);
+        payload.connectedSongs.forEach((song, i) => {
+            const angle = (i / len) * Math.PI * 2 - Math.PI / 2;
+            const x = Math.round(centerX + Math.cos(angle) * radius);
+            const y = Math.round(centerY + Math.sin(angle) * radius);
+            nodes.push({ id: song.id, data: { label: `${song.artistName} — ${song.songTitle}` }, position: { x, y } });
+        });
+
+        const colorFor = (type: string) =>
+            type === 'sample' ? '#06b6d4' : type === 'interpolation' ? '#8b5cf6' : '#f59e0b';
+
+        const edges: Edge[] = payload.connectedSongs.map((song) => ({
+            id: `e-${originalId}-${song.id}`,
+            source: originalId,
+            target: song.id,
+            style: { stroke: colorFor(song.relationshipType) },
+        } as Edge));
+
+        return { nodes, edges };
+    }
 
     const selectedPayload = selectedIndex !== null ? savedPayloads[selectedIndex] : null;
 
@@ -103,7 +139,7 @@ export default function MyVizPage() {
                 </div>
             </section>
 
-            <section className="mx-auto max-w-6xl px-4 pb-16 sm:px-6 lg:px-8">
+            <section className="mx-auto  max-w-6xl px-4 pb-16 sm:px-6 lg:px-8 grid grid-row-2">
                 {savedPayloads.length === 0 ? (
                     <Card className="border border-slate-800/80 bg-slate-900/80 shadow-xl">
                         <CardContent className="space-y-4 p-10 text-slate-300">
@@ -114,7 +150,7 @@ export default function MyVizPage() {
                         </CardContent>
                     </Card>
                 ) : (
-                    <GlowingCards enableGlow gap="1.5rem" padding="2rem" backgroundColor="rgba(15,23,42,0.8)">
+                    <GlowingCards className="bg-[rgba(15,23,42,0.8)]" responsive enableGlow gap="1.5rem" padding="2rem">
                         {savedPayloads.map((payload, index) => {
                             const connectionCounts = payload.connectedSongs.reduce(
                                 (counts, song) => {
@@ -128,9 +164,9 @@ export default function MyVizPage() {
                                 <GlowingCard
                                     key={payload.original.id}
                                     glowColor={selectedIndex === index ? "#38bdf8" : "#8b5cf6"}
-                                    className={`cursor-pointer rounded-3xl border border-slate-700/80 bg-slate-950/90 p-6 ${selectedIndex === index ? "scale-[1.01] border-cyan-400/80 bg-slate-900/95" : " hover:border-slate-500/80"
+                                    className={`rounded-3xl w-[80vw] md:w-[40vw] h-[75vh] md:h-[45vh] lg:h-[60vh] border border-slate-700/80 bg-slate-950/90 p-6 ${selectedIndex === index ? "scale-[1.01] border-cyan-400/80 bg-slate-900/95" : " hover:border-slate-500/80"
                                         }`}
-                                    
+
                                 >
                                     <div className="space-y-5">
                                         <div className="flex items-start justify-between">
@@ -153,7 +189,15 @@ export default function MyVizPage() {
                                         <div className="space-y-2">
                                             <p className="text-sm uppercase tracking-[0.28em] text-cyan-300/70">Original Song</p>
                                             <p className="text-lg font-medium text-slate-200">{payload.original.songTitle}</p>
-                                            <p className="text-cyan-300/70 hover:text-cyan-400 cursor-pointer underline" onClick={() => setSelectedIndex(index)}>
+                                            <p
+                                                className="text-cyan-300/70 hover:text-cyan-400 cursor-pointer underline"
+                                                onClick={() => {
+                                                    const g = mapPayloadToFlow(payload);
+                                                    setNodes(g.nodes);
+                                                    setEdges(g.edges);
+                                                    setSelectedIndex(index);
+                                                }}
+                                            >
                                                 View Connections
                                             </p>
                                         </div>
@@ -165,14 +209,14 @@ export default function MyVizPage() {
 
                                         <div className="grid gap-2 text-sm text-slate-300 sm:grid-cols-3">
                                             {(['sample', 'interpolation', 'parody'] as RelationshipType[]).map((type) => (
-                                                <div key={type} className="rounded-2xl border border-slate-700/80 bg-slate-950/70 p-3">
-                                                    <p className="font-semibold text-slate-100">{connectionLabels[type]}</p>
+                                                <div key={type} className="rounded-2xl border border-slate-700/80 bg-slate-950/70 p-3 text-wrap">
+                                                    <p className="font-semibold text-[9px] text-slate-100">{connectionLabels[type]}</p>
                                                     <p className="mt-1 text-xl text-cyan-300">{connectionCounts[type]}</p>
                                                 </div>
                                             ))}
                                         </div>
 
-                                        <div className="grid gap-2 text-sm sm:grid-cols-3">
+                                        <div className="flex  text-sm flex-wrap gap-2">
                                             {(['sample', 'interpolation', 'parody'] as RelationshipType[]).map((type) => {
                                                 const present = connectionCounts[type] > 0;
                                                 if (!present) return null;
@@ -183,7 +227,7 @@ export default function MyVizPage() {
                                                             ? 'bg-violet-500/10 text-violet-200 border-violet-500/25'
                                                             : 'bg-amber-500/10 text-amber-200 border-amber-500/25';
                                                 return (
-                                                    <div key={type} className={`rounded-full border px-3 py-2 text-center font-semibold ${color}`}>
+                                                    <div key={type} className={`rounded-full border px-3 w-fit py-2 text-center font-semibold ${color}`}>
                                                         {connectionLabels[type]}
                                                     </div>
                                                 );

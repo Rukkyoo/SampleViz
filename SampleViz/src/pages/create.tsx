@@ -64,17 +64,15 @@ export default function CreatePage() {
         songTitle: originalTitle,
       },
       connectedSongs,
-    };
-    console.log("Visualize payload", payload);
-    
+    };    
     let list: SavedVizPayload[] = [];
     const stored = localStorage.getItem("musicPayload");
-    if (stored) {
+    if (stored) { // check if there is existing data before parsing
       try {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
+        if (Array.isArray(parsed)) { // if it's already an array, use it directly
           list = parsed;
-        } else if (parsed && typeof parsed === "object") {
+        } else if (parsed && typeof parsed === "object") { // if it's a single object, wrap it in an array
           list = [parsed];
         }
       } catch {
@@ -215,7 +213,7 @@ export default function CreatePage() {
                       <CardContent className="space-y-5">
                         <fieldset className="space-y-4">
                           <legend className="sr-only">Relationship type for song {index + 1}</legend>
-                          <div className="grid grid-cols-3 gap-3 mt-5">
+                          <div className="grid grid-cols-3 gap-3 mt-5 w-fit">
                             {(["sample", "interpolation", "parody"] as RelationshipType[]).map((type) => {
                               const labelText =
                                 type === "sample"
