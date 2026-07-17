@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { GlowingCards, GlowingCard } from "../components/lightswind/glowing-cards";
-import { FaTrashAlt } from "react-icons/fa";
+import { FaTrashAlt, FaCompactDisc, FaClock, FaFire } from "react-icons/fa";
 import {
     ReactFlow,
     applyNodeChanges,
@@ -10,11 +10,14 @@ import {
     type OnNodesChange,
     type OnEdgesChange,
     Background,
-    Controls
+    Controls,
+    Handle,
+    Position
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Card, CardContent, CardDescription, CardTitle } from "../components/lightswind/card";
 import type { RelationshipType, SavedVizPayload } from "../types/song";
+import { getSpotifyTrackId } from "../lib/spotify";
 
 const connectionLabels: Record<RelationshipType, string> = {
     sample: "Sample",
@@ -29,6 +32,54 @@ const initialNodes: Node[] = [
 
 const initialEdges: Edge[] = [{ id: 'e1-2', source: '1', target: '2' }];
 
+function formatDuration(ms?: number): string {
+    if (!ms) return "";
+    const totalSeconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
+// Custom ReactFlow node to render the Spotify player directly inside the graph
+// References: https://reactflow.dev/docs/guides/custom-nodes/
+function SpotifyNode({ data }: { data: { label: string; spotifyUrl?: string } }) {
+    const spotifyId = data.spotifyUrl ? getSpotifyTrackId(data.spotifyUrl) : null;
+
+    return (
+        <div className="bg-slate-900/95 border border-slate-800 p-4 rounded-2xl shadow-2xl w-60 text-center text-slate-200 backdrop-blur-sm">
+            {/* Target handle (incoming connections) */}
+            <Handle type="target" position={Position.Top} className="!bg-cyan-400 !w-2.5 !h-2.5" />
+            
+            <div className="text-[11px] font-bold text-slate-200 mb-2 truncate leading-tight select-none px-1" title={data.label}>
+                {data.label}
+            </div>
+            
+            {spotifyId ? (
+                <div className="rounded-xl overflow-hidden border border-slate-950 bg-black h-[80px]">
+                    <iframe
+                        src={`https://open.spotify.com/embed/track/${spotifyId}?utm_source=generator&theme=0`}
+                        width="100%"
+                        height="80"
+                        frameBorder="0"
+                        allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                        loading="lazy"
+                    ></iframe>
+                </div>
+            ) : (
+                <div className="text-[10px] text-slate-500 italic p-4 border border-dashed border-slate-800 rounded-xl bg-slate-950/40 select-none">
+                    No Spotify Track URL
+                </div>
+            )}
+            
+            {/* Source handle (outgoing connections) */}
+            <Handle type="source" position={Position.Bottom} className="!bg-cyan-400 !w-2.5 !h-2.5" />
+        </div>
+    );
+}
+
+const nodeTypes = {
+    spotifyNode: SpotifyNode,
+};
 
 export default function MyVizPage() {
     const [savedPayloads, setSavedPayloads] = useState<SavedVizPayload[]>([]);
@@ -74,25 +125,39 @@ export default function MyVizPage() {
     }, []);
 
     function mapPayloadToFlow(payload: SavedVizPayload) {
-        const centerX = 400;
-        const centerY = 180;
-        const radius = 120;
+        const centerX = 450;
+        const originY = 60;  // Original song sits at the top
+        const spreadY = 380; // Connected songs fan out below
+        const radius = 280;
         const originalId = payload.original.id || `orig-${Math.random().toString(36).slice(2, 9)}`;
 
         const nodes: Node[] = [
             {
                 id: originalId,
-                data: { label: `${payload.original.artistName} — ${payload.original.songTitle}` },
-                position: { x: centerX, y: centerY },
+                type: 'spotifyNode',
+                data: {
+                    label: `${payload.original.artistName} — ${payload.original.songTitle}`,
+                    spotifyUrl: payload.original.spotifyUrl
+                },
+                position: { x: centerX, y: originY },
             },
         ];
 
         const len = Math.max(1, payload.connectedSongs.length);
         payload.connectedSongs.forEach((song, i) => {
-            const angle = (i / len) * Math.PI * 2 - Math.PI / 2;
-            const x = Math.round(centerX + Math.cos(angle) * radius);
-            const y = Math.round(centerY + Math.sin(angle) * radius);
-            nodes.push({ id: song.id, data: { label: `${song.artistName} — ${song.songTitle}` }, position: { x, y } });
+            // Spread connected songs in a downward semicircle (0 to π)
+            const angle = (len === 1 ? Math.PI / 2 : (i / (len - 1)) * Math.PI);
+            const x = Math.round(centerX + Math.cos(Math.PI - angle) * radius);
+            const y = Math.round(spreadY + Math.sin(angle) * (radius * 0.5));
+            nodes.push({
+                id: song.id,
+                type: 'spotifyNode',
+                data: {
+                    label: `${song.artistName} — ${song.songTitle}`,
+                    spotifyUrl: song.spotifyUrl
+                },
+                position: { x, y }
+            });
         });
 
         const colorFor = (type: string) =>
@@ -102,7 +167,7 @@ export default function MyVizPage() {
             id: `e-${originalId}-${song.id}`,
             source: originalId,
             target: song.id,
-            style: { stroke: colorFor(song.relationshipType) },
+            style: { stroke: colorFor(song.relationshipType), strokeWidth: 2 },
         } as Edge));
 
         return { nodes, edges };
@@ -160,63 +225,122 @@ export default function MyVizPage() {
                                 { sample: 0, interpolation: 0, parody: 0 } as Record<RelationshipType, number>,
                             );
 
+                            const spotifyId = getSpotifyTrackId(payload.original.spotifyUrl);
+
                             return (
-                                <GlowingCard
+                                <div
                                     key={payload.original.id}
-                                    glowColor={selectedIndex === index ? "#38bdf8" : "#8b5cf6"}
-                                    className={`rounded-3xl w-[80vw] md:w-[40vw] h-[75vh] md:h-[45vh] lg:h-[60vh] border border-slate-700/80 bg-slate-950/90 p-6 ${selectedIndex === index ? "scale-[1.01] border-cyan-400/80 bg-slate-900/95" : " hover:border-slate-500/80"
+                                    /* glowColor={selectedIndex === index ? "#38bdf8" : "#8b5cf6"} */
+                                    className={`rounded-3xl w-[80vw] md:w-[40vw] border border-slate-700/80 bg-slate-950/90 p-6 flex flex-col justify-between ${selectedIndex === index ? "scale-[1.01] border-cyan-400/80 bg-slate-900/95" : " hover:border-slate-500/80"
                                         }`}
 
                                 >
-                                    <div className="space-y-5">
-                                        <div className="flex items-start justify-between">
-                                            <div className="space-y-2">
-                                                <p className="text-sm uppercase tracking-[0.28em] text-cyan-300/70">Original Artist</p>
-                                                <h2 className="text-2xl font-semibold text-slate-100 space-grotesk">{payload.original.artistName}</h2>
-                                            </div>
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleDelete(payload.original.id);
-                                                }}
-                                                className="rounded-full p-2 cursor-pointer text-slate-500 hover:bg-slate-900 hover:text-red-400 transition"
-                                                title="Delete Visualization"
-                                            >
-                                                <FaTrashAlt />
-                                            </button>
-                                        </div>
-
-                                        <div className="space-y-2">
-                                            <p className="text-sm uppercase tracking-[0.28em] text-cyan-300/70">Original Song</p>
-                                            <p className="text-lg font-medium text-slate-200">{payload.original.songTitle}</p>
-                                            <p
-                                                className="text-cyan-300/70 hover:text-cyan-400 cursor-pointer underline"
-                                                onClick={() => {
-                                                    const g = mapPayloadToFlow(payload);
-                                                    setNodes(g.nodes);
-                                                    setEdges(g.edges);
-                                                    setSelectedIndex(index);
-                                                }}
-                                            >
-                                                View Connections
-                                            </p>
-                                        </div>
-
-                                        <div className="rounded-2xl border border-slate-700/80 bg-slate-950/70 p-4">
-                                            <p className="text-sm uppercase tracking-[0.28em] text-cyan-300/70">Total Connections</p>
-                                            <p className="mt-2 text-3xl font-bold text-cyan-400">{payload.connectedSongs.length}</p>
-                                        </div>
-
-                                        <div className="grid gap-2 text-sm text-slate-300 sm:grid-cols-3">
-                                            {(['sample', 'interpolation', 'parody'] as RelationshipType[]).map((type) => (
-                                                <div key={type} className="rounded-2xl border border-slate-700/80 bg-slate-950/70 p-3 text-wrap">
-                                                    <p className="font-semibold text-[9px] text-slate-100">{connectionLabels[type]}</p>
-                                                    <p className="mt-1 text-xl text-cyan-300">{connectionCounts[type]}</p>
+                                    <div className="space-y-5 flex-1 flex flex-col justify-between">
+                                        <div className="space-y-4">
+                                            {/* Header Section with Album Artwork */}
+                                            <div className="flex items-start justify-between gap-4">
+                                                <div className="flex items-center gap-3 overflow-hidden">
+                                                    {payload.original.albumArtUrl ? (
+                                                        <div className="relative shrink-0 group">
+                                                            <img
+                                                                src={payload.original.albumArtUrl}
+                                                                alt={payload.original.albumName}
+                                                                className="h-14 w-14 rounded-xl object-cover border border-slate-800/80 shadow"
+                                                            />
+                                                            <FaCompactDisc className="absolute -bottom-1 -right-1 text-slate-400 bg-slate-950 rounded-full text-sm p-0.5 animate-spin duration-10000" />
+                                                        </div>
+                                                    ) : (
+                                                        <div className="h-14 w-14 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center shrink-0">
+                                                            <FaCompactDisc className="text-slate-600 text-xl" />
+                                                        </div>
+                                                    )}
+                                                    <div className="overflow-hidden leading-tight">
+                                                        <p className="text-[10px] uppercase tracking-[0.24em] text-cyan-300/70">Original Track</p>
+                                                        <h2 className="text-lg font-bold text-slate-100 truncate mt-0.5">{payload.original.songTitle}</h2>
+                                                        <p className="text-xs text-slate-400 truncate mt-0.5">{payload.original.artistName}</p>
+                                                    </div>
                                                 </div>
-                                            ))}
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleDelete(payload.original.id);
+                                                    }}
+                                                    className="rounded-full p-2 cursor-pointer text-slate-500 hover:bg-slate-900 hover:text-red-400 transition shrink-0"
+                                                    title="Delete Visualization"
+                                                >
+                                                    <FaTrashAlt />
+                                                </button>
+                                            </div>
+
+                                            {/* Spotify Player Embed */}
+                                            {spotifyId && (
+                                                <div className="rounded-2xl overflow-hidden border border-slate-800/80 shadow-md bg-slate-950/30">
+                                                    <iframe
+                                                        src={`https://open.spotify.com/embed/track/${spotifyId}?utm_source=generator&theme=0`}
+                                                        width="100%"
+                                                        height="80"
+                                                        frameBorder="0"
+                                                        allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                                                        loading="lazy"
+                                                    ></iframe>
+                                                </div>
+                                            )}
+
+                                            {/* Metadata Badges */}
+                                            {(payload.original.albumName || payload.original.releaseYear || payload.original.durationMs) && (
+                                                <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-400 bg-slate-950/40 rounded-2xl border border-slate-800/60 p-3 leading-tight">
+                                                    {payload.original.albumName && (
+                                                        <div className="col-span-2 truncate">
+                                                            <span className="text-slate-500 uppercase tracking-wider text-[9px]">Album:</span> {payload.original.albumName}
+                                                        </div>
+                                                    )}
+                                                    {payload.original.releaseYear && (
+                                                        <div>
+                                                            <span className="text-slate-500 uppercase tracking-wider text-[9px]">Released:</span> {payload.original.releaseYear}
+                                                        </div>
+                                                    )}
+                                                    {payload.original.durationMs && (
+                                                        <div className="flex items-center gap-1">
+                                                            <FaClock className="text-slate-500 text-[10px]" />
+                                                            <span>{formatDuration(payload.original.durationMs)}</span>
+                                                        </div>
+                                                    )}
+                                                    {payload.original.popularity !== undefined && (
+                                                        <div className="col-span-2 mt-1 flex items-center gap-2">
+                                                            <span className="text-slate-500 uppercase tracking-wider text-[9px] flex items-center gap-1">
+                                                                <FaFire className="text-amber-500" /> Popularity:
+                                                            </span>
+                                                            <div className="h-1.5 flex-1 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+                                                                <div
+                                                                    className="h-full bg-emerald-500 rounded-full"
+                                                                    style={{ width: `${payload.original.popularity}%` }}
+                                                                />
+                                                            </div>
+                                                            <span className="text-[10px] font-semibold text-emerald-400">{payload.original.popularity}%</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            <div className="flex items-center justify-between border-t border-slate-800/60 pt-3">
+                                                <span className="text-xs text-slate-400">
+                                                    Original · {connectionCounts.sample} sample · {connectionCounts.interpolation} interpolation · {connectionCounts.parody} parody
+                                                </span>
+                                                <button
+                                                    className="text-xs text-cyan-300 hover:text-cyan-400 cursor-pointer underline font-medium flex items-center gap-1"
+                                                    onClick={() => {
+                                                        const g = mapPayloadToFlow(payload);
+                                                        setNodes(g.nodes);
+                                                        setEdges(g.edges);
+                                                        setSelectedIndex(index);
+                                                    }}
+                                                >
+                                                    View Connections
+                                                </button>
+                                            </div>
                                         </div>
 
-                                        <div className="flex  text-sm flex-wrap gap-2">
+                                        <div className="mt-4 flex text-sm flex-wrap gap-2">
                                             {(['sample', 'interpolation', 'parody'] as RelationshipType[]).map((type) => {
                                                 const present = connectionCounts[type] > 0;
                                                 if (!present) return null;
@@ -227,14 +351,14 @@ export default function MyVizPage() {
                                                             ? 'bg-violet-500/10 text-violet-200 border-violet-500/25'
                                                             : 'bg-amber-500/10 text-amber-200 border-amber-500/25';
                                                 return (
-                                                    <div key={type} className={`rounded-full border px-3 w-fit py-2 text-center font-semibold ${color}`}>
-                                                        {connectionLabels[type]}
+                                                    <div key={type} className={`rounded-full border px-3 w-fit py-1.5 text-center font-semibold text-[11px] ${color}`}>
+                                                        {connectionLabels[type]} ({connectionCounts[type]})
                                                     </div>
                                                 );
                                             })}
                                         </div>
                                     </div>
-                                </GlowingCard>
+                                </div>
                             );
                         })}
                     </GlowingCards>
@@ -242,19 +366,24 @@ export default function MyVizPage() {
 
                 {selectedPayload && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                        <div className="relative h-96 w-full max-w-2xl rounded-3xl border border-slate-700/80 bg-slate-900/95 shadow-2xl">
+                        <div className="relative h-[80vh] w-full max-w-5xl rounded-3xl border border-slate-700/80 bg-slate-900/95 shadow-2xl flex flex-col overflow-hidden">
                             <button
                                 onClick={() => setSelectedIndex(null)}
-                                className="absolute right-4 top-4 text-slate-400 hover:text-slate-100 transition"
+                                className="absolute right-6 top-6 text-slate-400 hover:text-slate-100 transition z-50"
                                 aria-label="Close modal"
                             >
                                 <span className="text-3xl cursor-pointer">×</span>
                             </button>
-                            <div className="h-full overflow-y-auto p-8 mx-2">
-                                <ReactFlow colorMode="dark" nodes={nodes}
+                            <div className="flex-1 overflow-hidden p-6 mt-6">
+                                <ReactFlow 
+                                    colorMode="dark" 
+                                    nodes={nodes}
                                     edges={edges}
                                     onNodesChange={onNodesChange}
-                                    onEdgesChange={onEdgesChange} fitView>
+                                    onEdgesChange={onEdgesChange} 
+                                    nodeTypes={nodeTypes}
+                                    fitView
+                                >
                                     <Background />
                                     <Controls />
                                 </ReactFlow>
