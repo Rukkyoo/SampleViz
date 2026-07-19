@@ -1,36 +1,52 @@
-import { ModelMessage, streamText } from 'ai';
-import { google } from "@ai-sdk/google";
-import 'dotenv/config';
-import * as readline from 'node:readline/promises';
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { streamText, convertToModelMessages } from "ai";
 
-const terminal = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
+export const config = {
+  runtime: "edge",
+};
+
+const googleProvider = createGoogleGenerativeAI({
+  apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
 });
 
-const messages: ModelMessage[] = [];
+export default async function handler(req: Request) {
+  if (req.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405 });
+  }
 
-async function main() {
-  while (true) {
-    const userInput = await terminal.question('You: ');
+  try {
+    const { messages, songData } = await req.json();
 
-    messages.push({ role: 'user', content: userInput });
+    const systemPrompt = `You are an expert music historian. You are analyzing sample relationships between songs.
+The user is viewing a connection graph for:
+Original Song: ${songData?.original ? `"${songData.original.songTitle}" by ${songData.original.artistName}` : 'Unknown'}
+Connected Songs: ${songData?.connectedSongs?.map((s: any) => `"${s.songTitle}" by ${s.artistName} (${s.relationshipType})`).join(', ') || 'None'}
+
+Please explain:
+1. What this relationship means (how the songs are connected, e.g., sampling, interpolation, parody).
+2. How the newer song used/sampled/interpolated the original.
+3. The historical significance of this connection.
+4. Any interesting facts or trivia about the tracks, artists, or sample itself.
+
+Rules:
+- If the relationship is not well-documented, clearly state so instead of making things up.
+- Format your response using clean Markdown.
+- Write in a highly informative, engaging, and professional tone.`;
 
     const result = streamText({
-      model: google("gemini-3.1-pro-preview"),
-      messages,
+      model: googleProvider("gemini-3.5-flash"),
+      system: systemPrompt,
+      messages: await convertToModelMessages(messages),
     });
 
-    let fullResponse = '';
-    process.stdout.write('\nAssistant: ');
-    for await (const delta of result.textStream) {
-      fullResponse += delta;
-      process.stdout.write(delta);
-    }
-    process.stdout.write('\n\n');
-
-    messages.push({ role: 'assistant', content: fullResponse });
+    // useChat on the client reads UI message parts (message.parts), which
+    // requires the UI message stream protocol, not a plain text stream.
+    return result.toUIMessageStreamResponse();
+  } catch (error: any) {
+    console.error("Vercel Edge function error:", error);
+    return new Response(JSON.stringify({ error: error.message || "Internal Server Error" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 }
-
-main().catch(console.error);
