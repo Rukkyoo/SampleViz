@@ -8,7 +8,7 @@ const links = [
 
 export function Navbar() {
     return (
-        <header className="border-b border-slate-800/70 bg-slate-950/95">
+        <header className="border-b border-slate-800/70 bg-slate-950/95 sticky top-0 z-40 backdrop-blur-md">
             <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
                 <NavLink to="/" className="flex items-center gap-3 text-slate-100">
                     <div>

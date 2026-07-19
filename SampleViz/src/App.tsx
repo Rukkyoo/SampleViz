@@ -3,6 +3,7 @@ import { Navbar } from "./components/navbar";
 import HomePage from "./pages/home";
 import CreatePage from "./pages/create";
 import MyVizPage from "./pages/myViz";
+import { Toaster } from "./components/lightswind/toaster";
 import "./App.css";
 
 function App() {
@@ -18,6 +19,7 @@ function App() {
           </Routes>
         </main>
       </div>
+      <Toaster position="top-right" />
     </BrowserRouter>
   );
 }

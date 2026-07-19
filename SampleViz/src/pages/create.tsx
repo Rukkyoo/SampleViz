@@ -7,10 +7,10 @@ import {
   CardHeader,
   CardTitle,
 } from "../components/lightswind/card";
-import { Tooltip, TooltipTrigger } from '../components/lightswind/tooltip';
 import { Input } from "../components/lightswind/input";
 import type { SongEntry, RelationshipType, SavedVizPayload } from "../types/song";
-
+import { getSpotifyTrackId, getTrackDetails, getAccessToken } from "../lib/spotify";
+import { FaSpinner, FaCompactDisc } from "react-icons/fa";
 
 const createSongEntry = (): SongEntry => ({
   id: crypto.randomUUID(),
@@ -24,7 +24,18 @@ export default function CreatePage() {
   const [originalUrl, setOriginalUrl] = useState("");
   const [originalArtist, setOriginalArtist] = useState("");
   const [originalTitle, setOriginalTitle] = useState("");
+  const [isOriginalLoading, setIsOriginalLoading] = useState(false);
+  const [originalMetadata, setOriginalMetadata] = useState<{
+    albumName?: string;
+    albumArtUrl?: string;
+    releaseYear?: string;
+    durationMs?: number;
+    popularity?: number;
+    spotifyId?: string;
+  }>({});
+
   const [connectedSongs, setConnectedSongs] = useState<SongEntry[]>([createSongEntry()]);
+  const [songLoadingStates, setSongLoadingStates] = useState<Record<string, boolean>>({});
 
   const totalCounts = connectedSongs.reduce(
     (counts, song) => {
@@ -33,6 +44,72 @@ export default function CreatePage() {
     },
     { sample: 0, interpolation: 0, parody: 0 } as Record<RelationshipType, number>,
   );
+
+  // Fetch track metadata when pasting URL (Original Song)
+  const handleOriginalUrlFetch = async (url: string) => {
+    const trackId = getSpotifyTrackId(url);
+    if (!trackId) return;
+
+    setIsOriginalLoading(true);
+    try {
+      const track = await getTrackDetails(trackId);
+      setOriginalArtist(track.artists.map((a) => a.name).join(", "));
+      setOriginalTitle(track.name);
+      setOriginalMetadata({
+        albumName: track.album?.name,
+        albumArtUrl: track.album?.images?.[1]?.url || track.album?.images?.[0]?.url,
+        releaseYear: track.album?.release_date?.substring(0, 4),
+        durationMs: track.duration_ms,
+        popularity: track.popularity,
+        spotifyId: track.id,
+      });
+    } catch (err) {
+      console.error("Error fetching original track details:", err);
+    } finally {
+      setIsOriginalLoading(false);
+    }
+  };
+
+  // Fetch track metadata when pasting URL (Connected Song)
+  const handleConnectedUrlFetch = async (id: string, url: string) => {
+    const trackId = getSpotifyTrackId(url);
+    if (!trackId) return;
+
+    setSongLoadingStates((prev) => ({ ...prev, [id]: true }));
+    try {
+      const track = await getTrackDetails(trackId);
+      const artist = track.artists.map((a) => a.name).join(", ");
+      const title = track.name;
+      const albumName = track.album?.name;
+      const albumArtUrl = track.album?.images?.[1]?.url || track.album?.images?.[0]?.url;
+      const releaseYear = track.album?.release_date?.substring(0, 4);
+      const durationMs = track.duration_ms;
+      const popularity = track.popularity;
+      const spotifyId = track.id;
+
+      setConnectedSongs((current) =>
+        current.map((song) =>
+          song.id === id
+            ? {
+              ...song,
+              artistName: artist,
+              songTitle: title,
+              albumName,
+              albumArtUrl,
+              releaseYear,
+              durationMs,
+              popularity,
+              spotifyId,
+            }
+            : song,
+        ),
+      );
+    } catch (err) {
+      console.error("Error fetching connected track details:", err);
+    } finally {
+      setSongLoadingStates((prev) => ({ ...prev, [id]: false }));
+    }
+  };
 
   const handleSongChange = (id: string, field: keyof SongEntry, value: string) => {
     setConnectedSongs((current) =>
@@ -62,17 +139,18 @@ export default function CreatePage() {
         spotifyUrl: originalUrl,
         artistName: originalArtist,
         songTitle: originalTitle,
+        ...originalMetadata,
       },
       connectedSongs,
-    };    
+    };
     let list: SavedVizPayload[] = [];
     const stored = localStorage.getItem("musicPayload");
-    if (stored) { // check if there is existing data before parsing
+    if (stored) {
       try {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) { // if it's already an array, use it directly
+        if (Array.isArray(parsed)) {
           list = parsed;
-        } else if (parsed && typeof parsed === "object") { // if it's a single object, wrap it in an array
+        } else if (parsed && typeof parsed === "object") {
           list = [parsed];
         }
       } catch {
@@ -81,10 +159,11 @@ export default function CreatePage() {
     }
     list.push(payload);
     localStorage.setItem("musicPayload", JSON.stringify(list));
-    
+
     setOriginalUrl("");
     setOriginalArtist("");
     setOriginalTitle("");
+    setOriginalMetadata({});
     setConnectedSongs([createSongEntry()]);
   };
 
@@ -111,41 +190,46 @@ export default function CreatePage() {
                       The source — the song that was sampled, interpolated, or parodied.
                     </p>
                   </div>
-                  <Tooltip
-                    content="Only available for spotify users, for now."
-                    side="top"
-                  >
-                    <TooltipTrigger asChild>
-                      <span className="inline-flex cursor-pointer rounded-full bg-slate-900 px-3 py-1 text-xs font-medium text-cyan-300 ring-1 ring-cyan-300/20">
-                        Spotify integration*
-                      </span>
-                    </TooltipTrigger>
-                  </Tooltip>
                 </div>
 
                 <Card className="border border-slate-800/80 py-5 bg-slate-900/80 shadow-xl">
                   <CardContent className="space-y-6">
                     <div className="grid gap-4">
                       <div className="grid gap-2">
-                        <label htmlFor="original-spotify-url" className="text-sm font-medium text-slate-200">
-                          Spotify URL
+                        <label htmlFor="original-spotify-url" className="text-sm font-medium text-slate-200 flex items-center gap-2">
+                          Spotify URL {isOriginalLoading && <FaSpinner className="animate-spin text-cyan-400 text-xs" />}
                         </label>
                         <div className="relative">
                           <Input
                             id="original-spotify-url"
                             value={originalUrl}
-                            onChange={(event) => setOriginalUrl(event.target.value)}
+                            onChange={(event) => {
+                              const val = event.target.value;
+                              setOriginalUrl(val);
+                              handleOriginalUrlFetch(val);
+                            }}
                             placeholder="https://open.spotify.com/track/..."
                             autoComplete="off"
                             required
                           />
-                          {/*  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-slate-950/80 px-3 py-1 text-xs text-slate-300 ring-1 ring-slate-700">
-                            {originalUrl ? "Matched" : "Paste a Spotify track URL"}
-                          </span> */}
                         </div>
                       </div>
 
                       <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="grid gap-2">
+                          <label htmlFor="original-song-title" className="text-sm font-medium text-slate-200">
+                            Song Title
+                          </label>
+                          <Input
+                            id="original-song-title"
+                            value={originalTitle}
+                            onChange={(event) => setOriginalTitle(event.target.value)}
+                            placeholder="e.g. Distant Lover"
+                            autoComplete="off"
+                            required
+                          />
+                        </div>
+
                         <div className="grid gap-2">
                           <label htmlFor="original-artist-name" className="text-sm font-medium text-slate-200">
                             Artist Name
@@ -159,21 +243,41 @@ export default function CreatePage() {
                             required
                           />
                         </div>
-
-                        <div className="grid gap-2">
-                          <label htmlFor="original-song-title" className="text-sm font-medium text-slate-200">
-                            Song Title
-                          </label>
-                          <Input
-                            id="original-song-title"
-                            value={originalTitle}
-                            onChange={(event) => setOriginalTitle(event.target.value)}
-                            placeholder="e.g. Distant Lover"
-                            autoComplete="off"
-                          />
-                        </div>
                       </div>
                     </div>
+
+                    {/* Metadata Visualizer */}
+                    {originalMetadata.albumArtUrl && (
+                      <div className="flex items-center gap-4 rounded-2xl bg-slate-950/70 border border-slate-800/70 p-3.5 animate duration-300">
+                        <div className="relative group shrink-0">
+                          <img
+                            src={originalMetadata.albumArtUrl}
+                            alt={originalMetadata.albumName}
+                            className="h-16 w-16 rounded-xl object-cover shadow-lg border border-slate-850"
+                          />
+                          <FaCompactDisc className="absolute -bottom-1 -right-1 text-slate-400 bg-slate-950 rounded-full text-base p-0.5 animate-spin duration-10000" />
+                        </div>
+                        <div className="overflow-hidden leading-tight flex-1">
+                          <p className="text-xs uppercase tracking-wider text-slate-400">Spotify Metadata</p>
+                          <p className="font-semibold text-slate-100 truncate text-sm mt-0.5">{originalTitle}</p>
+                          <p className="text-xs text-slate-300 truncate mt-0.5">
+                            Album: <span className="font-medium text-slate-200">{originalMetadata.albumName}</span> • Release: <span className="font-medium text-slate-200">{originalMetadata.releaseYear}</span>
+                          </p>
+                          {originalMetadata.popularity !== undefined && (
+                            <div className="flex items-center gap-2 mt-1.5">
+                              <span className="text-[10px] text-slate-400 uppercase">Popularity</span>
+                              <div className="h-1.5 w-24 bg-slate-800 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full"
+                                  style={{ width: `${originalMetadata.popularity}%` }}
+                                />
+                              </div>
+                              <span className="text-[10px] font-semibold text-emerald-400">{originalMetadata.popularity}%</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </section>
@@ -191,106 +295,134 @@ export default function CreatePage() {
                 </div>
 
                 <div className="space-y-5">
-                  {connectedSongs.map((song, index) => (
-                    <Card key={song.id} className="border border-slate-800/80 bg-slate-900/80 shadow-xl">
-                      <CardHeader className="flex flex-col gap-4 border-b border-slate-800/70 pb-4 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-300">
-                            Song {index + 1}
-                          </p>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="text-white bg-red-500 hover:bg-red-800 hover:text-white cursor-pointer border-slate-700 hover:border-slate-500 animate duration-300"
-                          onClick={() => removeSong(song.id)}
-                        >
-                          Remove
-                        </Button>
-                      </CardHeader>
-
-                      <CardContent className="space-y-5">
-                        <fieldset className="space-y-4">
-                          <legend className="sr-only">Relationship type for song {index + 1}</legend>
-                          <div className="grid grid-cols-3 gap-3 mt-5 w-fit">
-                            {(["sample", "interpolation", "parody"] as RelationshipType[]).map((type) => {
-                              const labelText =
-                                type === "sample"
-                                  ? "Sample"
-                                  : type === "interpolation"
-                                    ? "Interpolation"
-                                    : "Parody";
-                              const isActive = song.relationshipType === type;
-                              return (
-                                <button
-                                  key={type}
-                                  type="button"
-                                  onClick={() => handleRelationshipType(song.id, type)}
-                                  className={`rounded-full border px-3 py-2 text-sm font-semibold transition ${isActive
-                                    ? type === "sample"
-                                      ? "border-cyan-400 bg-cyan-500/10 text-cyan-200"
-                                      : type === "interpolation"
-                                        ? "border-violet-400 bg-violet-500/10 text-violet-200"
-                                        : "border-amber-400 bg-amber-500/10 text-amber-200"
-                                    : "border-slate-700 bg-slate-950/60 text-slate-300 hover:border-slate-500 hover:bg-slate-900"
-                                    }`}
-                                >
-                                  {labelText}
-                                </button>
-                              );
-                            })}
+                  {connectedSongs.map((song, index) => {
+                    const isLoading = songLoadingStates[song.id] || false;
+                    return (
+                      <Card key={song.id} className="border border-slate-800/80 bg-slate-900/80 shadow-xl">
+                        <CardHeader className="flex flex-col gap-4 border-b border-slate-800/70 pb-4 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-300">
+                              Song {index + 1}
+                            </p>
                           </div>
-                        </fieldset>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="text-white bg-red-500 hover:bg-red-800 hover:text-white cursor-pointer border-slate-700 hover:border-slate-500 animate duration-300"
+                            onClick={() => removeSong(song.id)}
+                          >
+                            Remove
+                          </Button>
+                        </CardHeader>
 
-                        <div className="grid gap-4">
-                          <div className="grid gap-2">
-                            <label htmlFor={`connected-url-${song.id}`} className="text-sm font-medium text-slate-200">
-                              Spotify URL
-                            </label>
-                            <Input
-                              id={`connected-url-${song.id}`}
-                              value={song.spotifyUrl}
-                              onChange={(event) => handleSongChange(song.id, "spotifyUrl", event.target.value)}
-                              placeholder="https://open.spotify.com/track/..."
-                              autoComplete="off"
-                              required
-                            />
-                          </div>
+                        <CardContent className="space-y-5">
+                          <fieldset className="space-y-4">
+                            <legend className="sr-only">Relationship type for song {index + 1}</legend>
+                            <div className="grid grid-cols-3 gap-3 mt-5 w-fit">
+                              {(["sample", "interpolation", "parody"] as RelationshipType[]).map((type) => {
+                                const labelText =
+                                  type === "sample"
+                                    ? "Sample"
+                                    : type === "interpolation"
+                                      ? "Interpolation"
+                                      : "Parody";
+                                const isActive = song.relationshipType === type;
+                                return (
+                                  <button
+                                    key={type}
+                                    type="button"
+                                    onClick={() => handleRelationshipType(song.id, type)}
+                                    className={`rounded-full border px-3 py-2 text-sm font-semibold transition ${isActive
+                                      ? type === "sample"
+                                        ? "border-cyan-400 bg-cyan-500/10 text-cyan-200"
+                                        : type === "interpolation"
+                                          ? "border-violet-400 bg-violet-500/10 text-violet-200"
+                                          : "border-amber-400 bg-amber-500/10 text-amber-200"
+                                      : "border-slate-700 bg-slate-950/60 text-slate-300 hover:border-slate-500 hover:bg-slate-900"
+                                      }`}
+                                  >
+                                    {labelText}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </fieldset>
 
-                          <div className="grid gap-4 sm:grid-cols-2">
+                          <div className="grid gap-4">
                             <div className="grid gap-2">
-                              <label htmlFor={`connected-artist-${song.id}`} className="text-sm font-medium text-slate-200">
-                                Artist Name
+                              <label htmlFor={`connected-url-${song.id}`} className="text-sm font-medium text-slate-200 flex items-center gap-2">
+                                Spotify URL {isLoading && <FaSpinner className="animate-spin text-cyan-400 text-xs" />}
                               </label>
                               <Input
-                                id={`connected-artist-${song.id}`}
-                                value={song.artistName}
-                                onChange={(event) => handleSongChange(song.id, "artistName", event.target.value)}
-                                placeholder="e.g. Kanye West"
+                                id={`connected-url-${song.id}`}
+                                value={song.spotifyUrl}
+                                onChange={(event) => {
+                                  const val = event.target.value;
+                                  handleSongChange(song.id, "spotifyUrl", val);
+                                  handleConnectedUrlFetch(song.id, val);
+                                }}
+                                placeholder="https://open.spotify.com/track/..."
                                 autoComplete="off"
                                 required
                               />
                             </div>
 
-                            <div className="grid gap-2">
-                              <label htmlFor={`connected-title-${song.id}`} className="text-sm font-medium text-slate-200">
-                                Song Title
-                              </label>
-                              <Input
-                                id={`connected-title-${song.id}`}
-                                value={song.songTitle}
-                                onChange={(event) => handleSongChange(song.id, "songTitle", event.target.value)}
-                                placeholder="e.g. Spaceship"
-                                autoComplete="off"
-                                required
-                              />
+                            <div className="grid gap-4 sm:grid-cols-2">
+                              <div className="grid gap-2">
+                                <label htmlFor={`connected-title-${song.id}`} className="text-sm font-medium text-slate-200">
+                                  Song Title
+                                </label>
+                                <Input
+                                  id={`connected-title-${song.id}`}
+                                  value={song.songTitle}
+                                  onChange={(event) => handleSongChange(song.id, "songTitle", event.target.value)}
+                                  placeholder="e.g. Spaceship"
+                                  autoComplete="off"
+                                  required
+                                />
+                              </div>
+
+                              <div className="grid gap-2">
+                                <label htmlFor={`connected-artist-${song.id}`} className="text-sm font-medium text-slate-200">
+                                  Artist Name
+                                </label>
+                                <Input
+                                  id={`connected-artist-${song.id}`}
+                                  value={song.artistName}
+                                  onChange={(event) => handleSongChange(song.id, "artistName", event.target.value)}
+                                  placeholder="e.g. Kanye West"
+                                  autoComplete="off"
+                                  required
+                                />
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+
+                          {/* Metadata Visualizer */}
+                          {song.albumArtUrl && (
+                            <div className="flex items-center gap-4 rounded-2xl bg-slate-950/70 border border-slate-800/70 p-3.5 animate duration-300">
+                              <div className="relative shrink-0">
+                                <img
+                                  src={song.albumArtUrl}
+                                  alt={song.albumName}
+                                  className="h-14 w-14 rounded-xl object-cover border border-slate-800"
+                                />
+                                <FaCompactDisc className="absolute -bottom-1 -right-1 text-slate-400 bg-slate-950 rounded-full text-sm p-0.5 animate-spin duration-10000" />
+                              </div>
+                              <div className="overflow-hidden leading-tight flex-1">
+                                <p className="text-[10px] uppercase tracking-wider text-slate-400">Spotify Metadata</p>
+                                <p className="font-semibold text-slate-100 truncate text-xs mt-0.5">{song.songTitle}</p>
+                                <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                                  Album: <span className="font-medium text-slate-200">{song.albumName}</span> • Release: <span className="font-medium text-slate-200">{song.releaseYear}</span>
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
                 </div>
                 <div className="flex justify-between flex-col gap-4 sm:flex-row">
                   <Button type="button" variant="secondary" size="lg" className="w-80 rounded-full cursor-pointer justify-center bg-cyan-500 text-slate-950 hover:bg-cyan-800 transition duration-300" onClick={addSong}>
